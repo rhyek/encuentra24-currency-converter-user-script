@@ -4,7 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "tsc-watch --onSuccess \"pnpm prettier --write dist/encuentra24-currency-converter.js\""
+    "format": "prettier --write dist/",
+    "dev": "tsc-watch --onSuccess \"pnpm format\"",
+    "build": "tsc && pnpm format"
   },
   "keywords": [],
   "author": "",

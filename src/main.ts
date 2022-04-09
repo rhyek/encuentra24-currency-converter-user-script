@@ -1,17 +1,26 @@
 // https://stackoverflow.com/questions/49509874/how-can-i-develop-my-userscript-in-my-favourite-ide-and-avoid-copy-pasting-it-to
 
-let gtqRatePromise = fetch(
-  'https://cdn.jsdelivr.net/gh/fawazahmed0/currency-api@1/latest/currencies/usd.min.json'
-)
-  .then((response) => response.json())
-  .then((json) => {
-    const rate: number = json.usd.gtq;
-    console.log(`gtq rate: ${rate}`);
-    return rate;
-  });
+let _rates: Record<string, number> | null = null;
+async function getRates() {
+  if (!_rates) {
+    _rates = await fetch(
+      'https://cdn.jsdelivr.net/gh/fawazahmed0/currency-api@1/latest/currencies/usd.min.json'
+    )
+      .then((response) => response.json())
+      .then((json) => {
+        return json.usd as Record<string, number>;
+      });
+  }
+  return _rates!;
+}
+
+const currencySymbolMap: Record<string, string> = {
+  Q: 'gtq',
+  '₡': 'crc',
+};
 
 async function processElement(element: HTMLElement | null) {
-  const gtqRate = await gtqRatePromise;
+  const rates = await getRates();
   if (!element) {
     return;
   }
@@ -22,14 +31,18 @@ async function processElement(element: HTMLElement | null) {
         continue;
       }
       const match = originalPriceStr.match(
-        /^Q(?<value>[0-9,]+)(?<reduced> \(Reduced .+\))?$/
+        /^(?<currency>[^0-9,.]+)(?<amount>[0-9,.]+)(?<reduced> \(Reduced .+\))?$/
       );
       if (!match) {
         continue;
       }
-      const { value, reduced } = match.groups!;
-      const priceGtq = Number(value.replaceAll(',', ''));
-      const priceUsd = priceGtq / gtqRate;
+      const { currency: currencySymbol, amount, reduced } = match.groups!;
+      const currency = currencySymbolMap[currencySymbol];
+      if (typeof currency === 'undefined') {
+        break;
+      }
+      const priceOther = Number(amount.replaceAll(',', ''));
+      const priceUsd = priceOther / rates[currency];
       const priceUsdStr = new Intl.NumberFormat('en-US', {
         style: 'currency',
         currency: 'USD',
@@ -57,20 +70,25 @@ async function processListings() {
   );
 }
 
-async function processRelated() {
-  const prices = document.querySelectorAll<HTMLDivElement>(
-    '.ann-box-teaser .price'
-  );
+async function processBySelector(selector: string) {
+  const elements = document.querySelectorAll<HTMLElement>(selector);
   await Promise.all(
-    Array.from(prices).map((priceEl) => processElement(priceEl))
+    Array.from(elements).map((element) => processElement(element))
   );
+}
+
+async function processRelated() {
+  await processBySelector('.ann-box-teaser .price');
 }
 
 // need @run-at
 document.addEventListener('DOMContentLoaded', () => {
   processListings();
   processElement(document.querySelector('.offer-price'));
+  // related
   processRelated();
+  // last visited
+  processBySelector('.last-visited-ads .ann-price');
 
   const currentListings = document.querySelector('#currentlistings');
   if (currentListings) {
